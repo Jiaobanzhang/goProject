@@ -1,7 +1,8 @@
 package main
 
 import (
-	"fmt"  // 格式化输出
+	"fmt" // 格式化输出
+	"io"
 	"net"  // 网络操作
 	"sync" // 同步包
 )
@@ -64,7 +65,31 @@ func (this *Server) Handler(conn net.Conn) {
 	this.mapLock.Unlock()
 
 	// 广播用户上线消息:
-	this.BroadCast(user, "已上线")
+	this.BroadCast(user, "已上线") // 只要有新用户上线了, 就广播一次
+
+	// 启动一个 goroutine, 专门处理客户端发送的消息, 然后将客户端发送的消息投送到 Message 中, 进行广播
+	go func() {
+		buf := make([]byte, 4096)
+		for {
+			n, err := conn.Read(buf)
+			if n == 0 { // 客户端主动下线 → n=0
+				this.BroadCast(user, "已下线")
+				// 用户下线, 从在线列表中删除
+				this.mapLock.Lock()
+				delete(this.OnlineMap, user.Name)
+				this.mapLock.Unlock()
+				conn.Close() // 关闭连接
+				return
+			}
+			if err != nil && err != io.EOF { // 其他错误, 打印错误信息并返回
+				fmt.Println("conn.Read err:", err)
+				return
+			}
+			// 一切正常, 接收并处理消息
+			msg := string(buf[:n-1]) // 去掉换行符
+			this.Message <- msg      // 将消息投递到全局通道 Message 中
+		}
+	}()
 
 	// 阻塞当前 handler goroutine, 防止退出:
 	select {}
@@ -77,7 +102,7 @@ func (this *Server) BroadCast(user *User, msg string) {
 }
 
 // ListenMessage 监听全局Message消息 channel, 将消息发送给所有在线用户:
-// 作用是用来监听 新来的消息, 并不具有广播的能力, 只是用来监听
+// 作用是用来监听Message中的消息, 如果有新消息, 就传递给不同 user 的 channel 中, 从而实现广播
 func (this *Server) ListenMessage() {
 	for {
 		msg := <-this.Message
