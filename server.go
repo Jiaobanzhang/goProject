@@ -57,28 +57,19 @@ func (this *Server) Start() {
 func (this *Server) Handler(conn net.Conn) {
 	fmt.Println("链接建立成功,客户端地址 : ", conn.RemoteAddr()) // 打印新连接的远程地址
 	// 创建用户对象
-	user := NewUser(conn)
+	user := NewUser(conn, this)
 
-	// 用户上线, 加入在线用户列表:
-	this.mapLock.Lock()
-	this.OnlineMap[user.Name] = user
-	this.mapLock.Unlock()
-
-	// 广播用户上线消息:
-	this.BroadCast(user, "已上线") // 只要有新用户上线了, 就广播一次
+	// 被Online方法替换掉,用户上线, 加入在线用户列表:
+	user.OnLine()
 
 	// 启动一个 goroutine, 专门处理客户端发送的消息, 然后将客户端发送的消息投送到 Message 中, 进行广播
 	go func() {
-		buf := make([]byte, 4096)
+		buf := make([]byte, 4096) // 创建一个 4KB 的字节缓冲区, 用于存储客户端发送的消息, 使用切片实现这个功能
 		for {
 			n, err := conn.Read(buf)
 			if n == 0 { // 客户端主动下线 → n=0
-				this.BroadCast(user, "已下线")
-				// 用户下线, 从在线列表中删除
-				this.mapLock.Lock()
-				delete(this.OnlineMap, user.Name)
-				this.mapLock.Unlock()
-				conn.Close() // 关闭连接
+				user.OffLine() // 被OffLine方法替换掉,用户下线, 从在线列表中删除
+				conn.Close()   // 关闭连接
 				return
 			}
 			if err != nil && err != io.EOF { // 其他错误, 打印错误信息并返回
