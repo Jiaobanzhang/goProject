@@ -61,5 +61,20 @@ func (this *User) OffLine() {
 
 // DoMessage 处理用户消息业务 :
 func (this *User) DoMessage(msg string) {
-	this.server.BroadCast(this, msg) // 广播用户消息
+	// 现在处理 "who" 指令 :
+	if msg == "who" {
+		this.server.mapLock.RLock() // 加读锁, 防止在遍历过程中, 有用户上线或下线
+		this.SendMsg("当前在线用户列表:")
+		for _, user := range this.server.OnlineMap {
+			onlineMsg := "[" + user.Addr + "]" + user.Name + "在线"
+			this.SendMsg(onlineMsg)
+		}
+		this.server.mapLock.RUnlock() // 遍历完成后, 解锁
+	} else {
+		this.server.BroadCast(this, msg) // 广播用户消息
+	}
+}
+
+func (this *User) SendMsg(msg string) {
+	this.conn.Write([]byte(msg + "\n")) // net.Conn 只能传输 二进制字节流[]byte
 }

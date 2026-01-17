@@ -78,7 +78,7 @@ func (this *Server) Handler(conn net.Conn) {
 			}
 			// 一切正常, 接收并处理消息
 			msg := string(buf[:n-1]) // 去掉换行符
-			this.Message <- msg      // 将消息投递到全局通道 Message 中
+			user.DoMessage(msg)      // 处理用户消息业务
 		}
 	}()
 
