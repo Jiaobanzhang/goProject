@@ -2,6 +2,7 @@ package main
 
 import (
 	"net"
+	"strings"
 )
 
 // User 定义用户结构
@@ -70,6 +71,40 @@ func (this *User) DoMessage(msg string) {
 			this.SendMsg(onlineMsg)
 		}
 		this.server.mapLock.RUnlock() // 遍历完成后, 解锁
+	} else if len(msg) > 7 && msg[:7] == "rename|" {
+		// 分割消息, 获取新名字 :
+		parts := strings.Split(msg, "|")
+		if len(parts) != 2 {
+			this.SendMsg("指令格式错误, 请使用: rename|新名字")
+			return
+		}
+		newName := parts[1]
+
+		// 检查新名字是否被占用
+		this.server.mapLock.RLock()
+		_, ok := this.server.OnlineMap[newName]
+		this.server.mapLock.RUnlock() // 遍历完成后, 解锁
+
+		if ok {
+			this.SendMsg("新名字已被占用, 请重新选择")
+		} else {
+			// 新名字未被占用, 更新用户名称
+			this.server.mapLock.Lock()
+			// 将旧名字删除
+			delete(this.server.OnlineMap, this.Name)
+			// 将新名字添加
+			this.server.OnlineMap[newName] = this
+			this.server.mapLock.Unlock()
+
+			// 更新用户使用自己的名字
+			oldName := this.Name
+			this.Name = newName
+
+			// 通知用户修改成功, 并广播给所有用户
+			this.SendMsg("您已成功修改名字为: " + newName)
+			this.server.BroadCast(this, "["+oldName+"]"+"已修改为"+"["+newName+"]")
+		}
+
 	} else {
 		this.server.BroadCast(this, msg) // 广播用户消息
 	}
